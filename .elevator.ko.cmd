@@ -1,0 +1,1 @@
+cmd_/usr/src/test_kernel/Part3/elevator.ko := ld -r -m elf_x86_64 -T ./scripts/module-common.lds --build-id  -o /usr/src/test_kernel/Part3/elevator.ko /usr/src/test_kernel/Part3/elevator.o /usr/src/test_kernel/Part3/elevator.mod.o ;  true
