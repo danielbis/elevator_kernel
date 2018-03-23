@@ -449,7 +449,12 @@ int empty_find_next_stop(void){
 			return direction or -1 if empty
 */
 void move_one(int direction){
-
+	
+	mutex_unlock(&elevator_l_mutex);
+	mutex_unlock(&floors_l_mutex);
+	ssleep(MOVE_TIME);	
+	mutex_lock_interruptible(&floors_l_mutex);	
+	mutex_lock_interruptible(&elevator_l_mutex);
 	if (direction == UP)
 		elevator.floor += 1;
 	else
@@ -457,6 +462,11 @@ void move_one(int direction){
 
 	if (should_unload(elevator.floor)){ 
 		elevator.status = LOADING;
+		mutex_unlock(&elevator_l_mutex);
+		mutex_unlock(&floors_l_mutex);
+		ssleep(LOAD_TIME);
+		mutex_lock_interruptible(&floors_l_mutex);	
+		mutex_lock_interruptible(&elevator_l_mutex);
 		//ssleep(LOAD_TIME);
 		unload_elevator(elevator.floor);
 		if(!list_empty(&floors[elevator.floor - 1]) && elevator.shutdown != 1){
@@ -465,6 +475,11 @@ void move_one(int direction){
 	}
 	else if (!list_empty(&floors[elevator.floor]) && elevator.shutdown != 1){
 		elevator.status = LOADING;
+		mutex_unlock(&elevator_l_mutex);
+		mutex_unlock(&floors_l_mutex);
+		ssleep(LOAD_TIME);
+		mutex_lock_interruptible(&floors_l_mutex);	
+		mutex_lock_interruptible(&elevator_l_mutex);
 		//ssleep(LOAD_TIME);
 		load_elevator(elevator.floor -1);
 	}
@@ -499,6 +514,12 @@ int run_elevator(void* params){
 					elevator.status = OFFLINE;
 				}
 				else if (ret == elevator.floor && elevator.shutdown != 1){
+					elevator.status = LOADING;
+					mutex_unlock(&elevator_l_mutex);
+					mutex_unlock(&floors_l_mutex);
+					ssleep(LOAD_TIME);
+					mutex_lock_interruptible(&floors_l_mutex);	
+					mutex_lock_interruptible(&elevator_l_mutex);
 					load_elevator(elevator.floor - 1);
 				}
 				else if (ret != -1){
@@ -508,7 +529,6 @@ int run_elevator(void* params){
 			}			
 			else
 			{
-
 				move_one(elevator.direction);
 				
 				if (list_empty(&elevator.p_list))
@@ -518,6 +538,7 @@ int run_elevator(void* params){
 			mutex_unlock(&floors_l_mutex);
 		}
 		mutex_unlock(&elevator_l_mutex);
+
 	}
 	return 0;	
 } 
@@ -558,13 +579,31 @@ int floor_u_load(int floor_no){
 void print_stats(char* message){
 	int i;
 	char buffer[512];
+	char status_string[12];
+	switch(elevator.status){
+		case OFFLINE:
+			strcpy(status_string, "OFFLINE");
+			break;
+		case UP:
+			strcpy(status_string, "UP");
+			break;
+		case DOWN:
+			strcpy(status_string, "DOWN");
+			break;
+		case LOADING:
+			strcpy(status_string, "LOADING");
+			break;
+		case IDLE:
+			strcpy(status_string, "IDLE");
+			break;
+	}
 	sprintf(message, "\nElevator Report:\n");
-	sprintf(buffer, "Elevator Status: %d\n Elevator Floor: %d\n  Elevator Next Floor: %d\n Weight Load: %d\n Unit Load: %d\n", elevator.status, elevator.floor, elevator.next_stop, elevator.w_load, elevator.unit_load);
+	sprintf(buffer, "Elevator Status: %s\nElevator Floor: %d\nElevator Next Floor: %d\nWeight Load: %d\nUnit Load: %d\n", status_string, elevator.floor, elevator.next_stop, elevator.w_load, elevator.unit_load);
 	strcat(message, buffer);
 	sprintf(buffer, "\nBuilding Report:\n");
 	strcat(message, buffer);
 	for (i = 0; i < 10; ++i){
-		sprintf(buffer, "Floor %d:\n People Serviced: %d\n Current Weight Load: %d\n Current Unit Load: %d\n", i+1, elevator.served_per_fl[i], floor_w_load(i), floor_u_load(i));
+		sprintf(buffer, "Floor %d:\nPeople Serviced: %d\nCurrent Weight Load: %d\nCurrent Unit Load: %d\n", i+1, elevator.served_per_fl[i], floor_w_load(i), floor_u_load(i));
 		strcat(message, buffer);
 	}
 }
@@ -636,6 +675,8 @@ static int elevator_init(void) {
 		remove_proc_entry(ENTRY_NAME, NULL);
 		return PTR_ERR(elevator_thread);
 	}
+	start_elevator();
+	stop_elevator();
 	return 0;
 }
 module_init(elevator_init);
